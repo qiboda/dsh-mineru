@@ -2,10 +2,8 @@
   "name": "dsh-mineru",
   "version": "0.1.0",
   "description": "DSH plugin: run MinerU to parse PDFs into HTML, keep the intermediate zip + final HTML, preview in-browser, select text and quote it into the DSH dialog.",
-  "private": true,
   "type": "module",
   "main": "./lib/index.js",
-  "types": "./lib/index.d.ts",
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
@@ -50,5 +48,9 @@
   "engines": {
     "node": ">=20"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qiboda/dsh-mineru.git"
+  }
 }
