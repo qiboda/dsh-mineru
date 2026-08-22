@@ -17,6 +17,7 @@ it straight into the DSH input box.
 | Resizable preview | Drag the divider between the document list and the HTML preview to adjust the preview width; the split is remembered in `localStorage`. |
 | Async parse progress | The client parses through an async job (`/mineru/api/parse` → `/mineru/api/jobs/<id>`) and shows a live progress bar (MinerU phase percentages such as “Layout Predict 42%”). |
 | Select-and-quote | Select text inside the preview iframe; a "引用到对话" button appears and inserts the selected text **plus document metadata** (document id/title, PDF/HTML/ZIP paths, preview link) into the current DSH conversation draft so the agent can look up the full source document when answering. |
+| Document menu | Each list item has a `⋯` menu: open in new tab, download zip, rename, and delete (with confirmation). Delete removes the plugin-owned output directory only, never the source PDF. |
 | Download zip | Each document entry links to `/mineru/download/<id>` for the original MinerU zip. |
 
 ## Install

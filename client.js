@@ -70,7 +70,24 @@ window.__ModuleLoader__.load({
         '  overflow-y: auto; background: #11141d; padding: 8px; }',
         '.dsh-mineru-item { display: block; width: 100%; text-align: left; padding: 8px 10px;',
         '  border: 1px solid transparent; border-radius: 8px; background: transparent;',
-        '  color: #d8dee9; cursor: pointer; margin-bottom: 4px; }',
+        '  color: #d8dee9; cursor: pointer; }',
+        '.dsh-mineru-itemwrap { position: relative; display: flex; align-items: stretch;',
+        '  gap: 2px; margin-bottom: 4px; }',
+        '.dsh-mineru-itemwrap .dsh-mineru-item { flex: 1; min-width: 0; }',
+        '.dsh-mineru-item-more { flex: none; width: 28px; border: 1px solid transparent;',
+        '  border-radius: 8px; background: transparent; color: #8b93a7; cursor: pointer;',
+        '  font-size: 14px; line-height: 1; }',
+        '.dsh-mineru-item-more:hover, .dsh-mineru-item-more.active { background: #1f2740;',
+        '  border-color: #3a5091; color: #dbe4ff; }',
+        '.dsh-mineru-item-menu { position: absolute; right: 0; top: calc(100% + 2px); z-index: 20;',
+        '  min-width: 150px; padding: 4px; display: none; background: #1c2230;',
+        '  border: 1px solid #2a3040; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }',
+        '.dsh-mineru-item-menu.open { display: block; }',
+        '.dsh-mineru-item-menu-item { display: block; width: 100%; text-align: left; padding: 6px 10px;',
+        '  border: 0; border-radius: 6px; background: transparent; color: #d8dee9;',
+        '  font-size: 12px; cursor: pointer; white-space: nowrap; }',
+        '.dsh-mineru-item-menu-item:hover { background: #242c3d; }',
+        '.dsh-mineru-item-menu-danger { color: #f7768e; }',
         '.dsh-mineru-item:hover { background: #1a1f2b; }',
         '.dsh-mineru-item.active { background: #1f2740; border-color: #3a5091; }',
         '.dsh-mineru-item-title { font-size: 12px; font-weight: 600; line-height: 1.35; margin-bottom: 3px; word-break: break-word; }',
@@ -146,6 +163,8 @@ window.__ModuleLoader__.load({
     var sessions = null
     var conversation = null
     var currentLang = 'zh'
+    var itemMenuWrap = null
+    var itemMenuDocClick = null
 
     function t(obj) {
       return currentLang === 'en' ? obj.en : obj.zh
@@ -506,14 +525,109 @@ window.__ModuleLoader__.load({
         return
       }
       ui.entries.forEach(function (entry) {
+        var wrap = el('div', 'dsh-mineru-itemwrap')
         var item = el('button', 'dsh-mineru-item' + (entry.id === ui.currentId ? ' active' : ''))
         item.appendChild(el('div', 'dsh-mineru-item-title', entry.title || entry.id))
         var meta = [formatTime(entry.createdAt), formatSize(entry.sizes && entry.sizes.html)]
           .filter(Boolean).join(' · ')
         item.appendChild(el('div', 'dsh-mineru-item-meta', meta))
-        item.addEventListener('click', function () { openDoc(entry.id) })
-        listEl.appendChild(item)
+        item.addEventListener('click', function () { closeItemMenus(); openDoc(entry.id) })
+        wrap.appendChild(item)
+        var moreBtn = el('button', 'dsh-mineru-item-more', '⋯')
+        moreBtn.setAttribute('title', t({ zh: '更多操作', en: 'More actions' }))
+        moreBtn.addEventListener('click', function (e) {
+          e.stopPropagation()
+          toggleItemMenu(entry, wrap, moreBtn)
+        })
+        wrap.appendChild(moreBtn)
+        listEl.appendChild(wrap)
       })
+    }
+
+    function closeItemMenus() {
+      var menus = document.querySelectorAll('.dsh-mineru-item-menu.open')
+      for (var i = 0; i < menus.length; i++) menus[i].classList.remove('open')
+      var actives = document.querySelectorAll('.dsh-mineru-item-more.active')
+      for (var j = 0; j < actives.length; j++) actives[j].classList.remove('active')
+      if (itemMenuDocClick !== null) {
+        document.removeEventListener('click', itemMenuDocClick)
+        itemMenuDocClick = null
+        itemMenuWrap = null
+      }
+    }
+
+    function toggleItemMenu(entry, wrap, moreBtn) {
+      var menu = wrap.querySelector('.dsh-mineru-item-menu')
+      if (menu !== null && menu.classList.contains('open')) {
+        closeItemMenus()
+        return
+      }
+      closeItemMenus()
+      if (menu === null) {
+        menu = el('div', 'dsh-mineru-item-menu')
+        var openNew = el('button', 'dsh-mineru-item-menu-item', t({ zh: '新窗口打开', en: 'Open in new tab' }))
+        openNew.addEventListener('click', function () {
+          closeItemMenus()
+          window.open('/mineru/preview/' + encodeURIComponent(entry.id), '_blank')
+        })
+        menu.appendChild(openNew)
+        if (entry.zip) {
+          var download = el('button', 'dsh-mineru-item-menu-item', t({ zh: '下载 zip', en: 'Download zip' }))
+          download.addEventListener('click', function () {
+            closeItemMenus()
+            window.open('/mineru/download/' + encodeURIComponent(entry.id), '_blank')
+          })
+          menu.appendChild(download)
+        }
+        var rename = el('button', 'dsh-mineru-item-menu-item', t({ zh: '重命名', en: 'Rename' }))
+        rename.addEventListener('click', function () {
+          closeItemMenus()
+          var title = window.prompt(t({ zh: '输入新标题：', en: 'Enter new title:' }), entry.title || entry.id)
+          if (title === null || title.trim() === '') return
+          fetchJson('/mineru/api/rename', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id: entry.id, title: title.trim() }),
+          }).then(function () {
+            toast(t({ zh: '已重命名', en: 'Renamed' }))
+            return refreshList()
+          }).catch(function (err) {
+            toast(t({ zh: '重命名失败：' + err.message, en: 'Rename failed: ' + err.message }))
+          })
+        })
+        menu.appendChild(rename)
+        var remove = el('button', 'dsh-mineru-item-menu-item dsh-mineru-item-menu-danger', t({ zh: '删除', en: 'Delete' }))
+        remove.addEventListener('click', function () {
+          closeItemMenus()
+          var ok = window.confirm(t({
+            zh: '确定删除「' + (entry.title || entry.id) + '」吗？\n会同时删除该文档的输出目录。',
+            en: 'Delete "' + (entry.title || entry.id) + '"?\nIts output directory will also be removed.',
+          }))
+          if (!ok) return
+          fetchJson('/mineru/api/delete', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id: entry.id }),
+          }).then(function () {
+            if (ui.currentId === entry.id) clearPreview()
+            toast(t({ zh: '已删除', en: 'Deleted' }))
+            return refreshList()
+          }).catch(function (err) {
+            toast(t({ zh: '删除失败：' + err.message, en: 'Delete failed: ' + err.message }))
+          })
+        })
+        menu.appendChild(remove)
+        wrap.appendChild(menu)
+      }
+      menu.classList.add('open')
+      moreBtn.classList.add('active')
+      itemMenuWrap = wrap
+      if (itemMenuDocClick === null) {
+        itemMenuDocClick = function (e) {
+          if (itemMenuWrap !== null && !itemMenuWrap.contains(e.target)) closeItemMenus()
+        }
+        document.addEventListener('click', itemMenuDocClick)
+      }
     }
 
     function renderPreviewBar() {
@@ -876,32 +990,43 @@ window.__ModuleLoader__.load({
       } catch (_) { /* localStorage may be unavailable in strict contexts */ }
 
       // Drag-to-resize the HTML preview pane (the list pane width changes too).
+      // Use pointer capture + disable iframe pointer-events while dragging so
+      // the parent page keeps receiving pointermove even over the preview iframe.
       var dragging = false
       var startX = 0
       var startSideWidth = 0
-      resizer.addEventListener('mousedown', function (e) {
+      var activePointerId = null
+      function onResizeMove(ev) {
+        if (!dragging || ev.pointerId !== activePointerId) return
+        var bodyWidth = body.clientWidth
+        var minSide = Math.min(180, Math.max(120, bodyWidth - 280))
+        var maxSide = Math.max(minSide, Math.min(520, bodyWidth - 220))
+        var next = Math.max(minSide, Math.min(maxSide, startSideWidth + (ev.clientX - startX)))
+        side.style.width = next + 'px'
+        try { localStorage.setItem('dsh-mineru-side-width', String(Math.round(next))) } catch (_) { /* ignore */ }
+      }
+      function onResizeEnd(ev) {
+        if (ev.pointerId !== activePointerId) return
+        dragging = false
+        activePointerId = null
+        resizer.classList.remove('dragging')
+        frame.style.pointerEvents = ''
+        resizer.removeEventListener('pointermove', onResizeMove)
+        resizer.removeEventListener('pointerup', onResizeEnd)
+        resizer.removeEventListener('pointercancel', onResizeEnd)
+      }
+      resizer.addEventListener('pointerdown', function (e) {
         dragging = true
+        activePointerId = e.pointerId
         startX = e.clientX
         startSideWidth = side.getBoundingClientRect().width
         resizer.classList.add('dragging')
+        frame.style.pointerEvents = 'none'
+        try { resizer.setPointerCapture(e.pointerId) } catch (_) { /* older browsers */ }
+        resizer.addEventListener('pointermove', onResizeMove)
+        resizer.addEventListener('pointerup', onResizeEnd)
+        resizer.addEventListener('pointercancel', onResizeEnd)
         e.preventDefault()
-        function onMove(ev) {
-          if (!dragging) return
-          var bodyWidth = body.clientWidth
-          var minSide = Math.min(180, Math.max(120, bodyWidth - 280))
-          var maxSide = Math.max(minSide, Math.min(520, bodyWidth - 220))
-          var next = Math.max(minSide, Math.min(maxSide, startSideWidth + (ev.clientX - startX)))
-          side.style.width = next + 'px'
-          try { localStorage.setItem('dsh-mineru-side-width', String(Math.round(next))) } catch (_) { /* ignore */ }
-        }
-        function onUp() {
-          dragging = false
-          resizer.classList.remove('dragging')
-          document.removeEventListener('mousemove', onMove)
-          document.removeEventListener('mouseup', onUp)
-        }
-        document.addEventListener('mousemove', onMove)
-        document.addEventListener('mouseup', onUp)
       })
 
       return { list: list, bar: bar, frame: frame }
