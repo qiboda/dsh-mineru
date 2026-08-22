@@ -1,0 +1,58 @@
+# dsh-mineru
+
+DSH plugin: run [MinerU](https://github.com/opendatalab/MinerU) from the DSH web client,
+convert the parsed Markdown to HTML, keep both the intermediate MinerU zip and the final
+standalone HTML, preview the HTML in the browser, select any text in the preview and quote
+it straight into the DSH input box.
+
+## Features
+
+| Feature | Description |
+|---|---|
+| `mineru_parse_pdf` tool | The agent can parse a PDF path: runs `mineru -p <pdf> -o <docDir>`, finds the generated zip, unzips it, converts the Markdown to standalone HTML with pandoc, and registers the output in the library index. |
+| `mineru_list_parses` tool | Lists all parsed documents in the library. |
+| Persistent storage | Outputs are stored under `~/Downloads/mineru-outputs/<id>/`; the library index lives at `~/.dsh/mineru-library.json` (both overridable via `DSH_MINERU_LIBRARY` / `DSH_MINERU_INDEX`). |
+| Settings page | A "MinerU" section in the DSH Settings page (`settings.section`) lets the user change `libraryRoot`, `indexFile`, `mineruBin`, and default `backend` / `method` / `effort` / `lang`. Path fields have a native "选择…" button (zenity) so you can pick a folder or file instead of typing the path. Changes apply live, no server restart. |
+| Browser preview | The client lists parsed documents and shows the final HTML in a same-origin iframe (`/mineru/preview/<id>`). When DSH-better-sidebar is installed, the launcher opens a **MinerU sidebar tab** so you can read the document while continuing to chat; without better-sidebar it falls back to the modal. |
+| Select-and-quote | Select text inside the preview iframe; a "引用到对话" button appears and inserts the selected text into the current DSH conversation draft. |
+| Download zip | Each document entry links to `/mineru/download/<id>` for the original MinerU zip. |
+
+## Install (source install, as used in this workspace)
+
+```sh
+cd ~/codes/dsh-mineru
+# The plugin is plain JS host + hand-written CJS client, no build required:
+# lib/index.js and client.js are already the runtime artifacts.
+# Then:
+#   dev_install_package --dir ~/codes/dsh-mineru --profile web
+#   (or, after a server restart, profile package.json link + bundles entry)
+```
+
+## Layout
+
+```
+dsh-mineru/
+  package.json          # dsh.bundle.patch + dsh.client declaration
+  cordis.patch.yml      # inserts the host plugin row
+  lib/index.js          # host: tools + webServer routes
+  lib/client.js         # browser bundle (mirror of client.js, kept for reload tooling)
+  client.js             # browser source: launcher + modal + preview + select-to-quote
+  README.md
+```
+
+## Example
+
+Ask the agent: “用 MinerU 解析这个 PDF：/home/skwy/Downloads/foo.pdf”
+
+The agent calls `mineru_parse_pdf` with `{ pdf }`; the tool returns the paths plus a
+preview id. Open the MinerU client launcher in DSH web (top-right “MinerU” button),
+select the document, preview the HTML, select text, and press “引用到对话”.
+
+## Notes
+
+- First MinerU run may download models; the subsequent runs are faster.
+- `pandoc` and `unzip` must be available (`command -v pandoc unzip`).
+- The path pickers use `zenity` (`command -v zenity`); if it is not available,
+  path fields still accept typed absolute paths.
+- To change defaults: use the DSH Settings page → MinerU, or the environment
+  variables `DSH_MINERU_LIBRARY`, `DSH_MINERU_INDEX`, `MINERU_BIN`.

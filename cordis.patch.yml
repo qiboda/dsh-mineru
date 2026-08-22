@@ -1,0 +1,10 @@
+# dsh-mineru bundle patch
+#
+# Mounts the host half of dsh-mineru: a single plugin row providing
+# the mineru_parse_pdf / mineru_list_parses tools and the
+# /mineru/api + /mineru/preview + /mineru/download routes.
+# The bundle channel applies this patch when the package appears in
+# `dsh.profile.bundles` (see package.json `dsh.bundle.patch`).
+- insert:
+    - id: dsh-mineru
+      name: 'dsh-mineru'
