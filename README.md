@@ -14,10 +14,22 @@ it straight into the DSH input box.
 | Persistent storage | Outputs are stored under `~/Downloads/mineru-outputs/<id>/`; the library index lives at `~/.dsh/mineru-library.json` (both overridable via `DSH_MINERU_LIBRARY` / `DSH_MINERU_INDEX`). |
 | Settings page | A "MinerU" section in the DSH Settings page (`settings.section`) lets the user change `libraryRoot`, `indexFile`, `mineruBin`, and default `backend` / `method` / `effort` / `lang`. Path fields have a native "选择…" button (zenity) so you can pick a folder or file instead of typing the path. Changes apply live, no server restart. |
 | Browser preview | The client lists parsed documents and shows the final HTML in a same-origin iframe (`/mineru/preview/<id>`). When DSH-better-sidebar is installed, the launcher opens a **MinerU sidebar tab** so you can read the document while continuing to chat; without better-sidebar it falls back to the modal. |
-| Select-and-quote | Select text inside the preview iframe; a "引用到对话" button appears and inserts the selected text into the current DSH conversation draft. |
+| Resizable preview | Drag the divider between the document list and the HTML preview to adjust the preview width; the split is remembered in `localStorage`. |
+| Async parse progress | The client parses through an async job (`/mineru/api/parse` → `/mineru/api/jobs/<id>`) and shows a live progress bar (MinerU phase percentages such as “Layout Predict 42%”). |
+| Select-and-quote | Select text inside the preview iframe; a "引用到对话" button appears and inserts the selected text **plus document metadata** (document id/title, PDF/HTML/ZIP paths, preview link) into the current DSH conversation draft so the agent can look up the full source document when answering. |
 | Download zip | Each document entry links to `/mineru/download/<id>` for the original MinerU zip. |
 
-## Install (source install, as used in this workspace)
+## Install
+
+### From GitHub (public)
+
+```sh
+dsh plugin --profile web add git+https://github.com/qiboda/dsh-mineru.git
+```
+
+Then reload/restart the DSH web service as usual and hard-refresh the browser.
+
+### Source install (as used in this workspace)
 
 ```sh
 cd ~/codes/dsh-mineru
