@@ -796,7 +796,13 @@ window.__ModuleLoader__.load({
     }
 
     function readCssVar(name) {
-      try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() } catch (_) { return '' }
+      try {
+        // DSH's ThemePresenter writes token variables as inline styles on
+        // <body>, so read from there first (documentElement only holds
+        // `color-scheme`, not the alias token palette).
+        var el = document.body || document.documentElement
+        return getComputedStyle(el).getPropertyValue(name).trim()
+      } catch (_) { return '' }
     }
 
     function applyThemeToFrame(frame, doc) {
@@ -827,8 +833,10 @@ window.__ModuleLoader__.load({
           'a { color: var(--dsh-accent); }',
           'blockquote { color: var(--dsh-label2); border-left-color: var(--dsh-accent); background: var(--dsh-bg2); }',
           'code, pre { background: var(--dsh-bg3); color: var(--dsh-label2); border-color: var(--dsh-border); }',
-          'table { border-color: var(--dsh-border); }',
-          'th, td { border-color: var(--dsh-border); }',
+          'table { border-collapse: collapse; border: 1px solid var(--dsh-border); width: 100%; }',
+          'th, td { border: 1px solid var(--dsh-border); padding: 6px 8px; text-align: left; vertical-align: top; }',
+          'th { background: var(--dsh-bg2); font-weight: 600; }',
+          'tr:nth-child(even) td { background: var(--dsh-bg2); }',
           'img { max-width: 100%; height: auto; }',
           'hr { border-color: var(--dsh-border); }',
         ].join('\n')
@@ -1524,6 +1532,12 @@ window.__ModuleLoader__.load({
           attributes: true,
           attributeFilter: ['class', 'data-theme', 'data-color-scheme', 'style'],
         })
+        if (document.body !== null) {
+          themeObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['data-ds-dark-theme', 'style', 'class'],
+          })
+        }
       } catch (_) {
         // Older browser or non-DOM target; the per-load apply still covers most cases.
       }
