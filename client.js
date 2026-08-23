@@ -193,6 +193,7 @@ window.__ModuleLoader__.load({
     var currentLang = 'zh'
     var itemMenuWrap = null
     var itemMenuDocClick = null
+    var scrollSaveTimer = null
 
     function t(obj) {
       return currentLang === 'en' ? obj.en : obj.zh
@@ -523,17 +524,116 @@ window.__ModuleLoader__.load({
       })
     }
 
+    function getMineruFrame() {
+      return document.querySelector('.dsh-mineru-frame')
+    }
+
+    function getFrameDoc(frame) {
+      if (frame === null) return null
+      try {
+        return frame.contentDocument
+      } catch (_) {
+        return null
+      }
+    }
+
+    function getScrollTop() {
+      var frame = getMineruFrame()
+      var doc = getFrameDoc(frame)
+      if (doc === null) return 0
+      var el = doc.scrollingElement || doc.documentElement || doc.body
+      if (el === null) return 0
+      return el.scrollTop || 0
+    }
+
+    function saveScrollPos(id, top) {
+      if (!id || typeof top !== 'number' || !isFinite(top)) return
+      try { localStorage.setItem('dsh-mineru-scroll:' + id, String(Math.max(0, Math.round(top)))) } catch (_) { /* ignore */ }
+    }
+
+    function loadScrollPos(id) {
+      if (!id) return null
+      try {
+        var raw = localStorage.getItem('dsh-mineru-scroll:' + id)
+        if (raw === null || raw === '') return null
+        var n = parseFloat(raw)
+        return isNaN(n) ? null : n
+      } catch (_) { return null }
+    }
+
+    function saveLastDocId(id) {
+      try {
+        if (id) localStorage.setItem('dsh-mineru-current-doc', id)
+        else localStorage.removeItem('dsh-mineru-current-doc')
+      } catch (_) { /* ignore */ }
+    }
+
+    function loadLastDocId() {
+      try { return localStorage.getItem('dsh-mineru-current-doc') || null } catch (_) { return null }
+    }
+
+    function saveCurrentScroll() {
+      if (!ui.currentId) return
+      saveScrollPos(ui.currentId, getScrollTop())
+    }
+
+    function scheduleSaveCurrentScroll() {
+      if (scrollSaveTimer !== null) clearTimeout(scrollSaveTimer)
+      scrollSaveTimer = setTimeout(function () {
+        scrollSaveTimer = null
+        saveCurrentScroll()
+      }, 350)
+    }
+
+    function restoreScrollPosition(id) {
+      if (!id) return
+      var frame = getMineruFrame()
+      var doc = getFrameDoc(frame)
+      if (doc === null) return
+      var top = loadScrollPos(id)
+      if (top === null) return
+      var apply = function () {
+        if (ui.currentId !== id) return
+        var win = null
+        try { win = frame.contentWindow } catch (_) { win = null }
+        if (win !== null) { try { win.scrollTo(0, top) } catch (_) { /* ignore */ } }
+        var el = doc.scrollingElement || doc.documentElement || doc.body
+        if (el !== null) { try { el.scrollTop = top } catch (_) { /* ignore */ } }
+      }
+      // Apply after load and a couple of reflow ticks (images/fonts can shift layout).
+      apply()
+      setTimeout(apply, 60)
+      setTimeout(apply, 350)
+    }
+
     function refreshList() {
       return apiList().then(function (entries) {
         renderList()
-        if (ui.currentId === null && entries.length > 0) {
-          openDoc(entries[0].id)
-        } else if (ui.currentId !== null && !entries.some(function (e) { return e.id === ui.currentId })) {
-          if (entries.length > 0) openDoc(entries[0].id)
-          else clearPreview()
+        var lastId = loadLastDocId()
+        if (ui.currentId === null) {
+          if (lastId !== null && entries.some(function (e) { return e.id === lastId })) {
+            openDoc(lastId)
+          } else if (entries.length > 0) {
+            openDoc(entries[0].id)
+          }
+        } else if (!entries.some(function (e) { return e.id === ui.currentId })) {
+          if (lastId !== null && entries.some(function (e) { return e.id === lastId })) {
+            openDoc(lastId)
+          } else if (entries.length > 0) {
+            openDoc(entries[0].id)
+          } else {
+            clearPreview()
+          }
         } else {
-          // keep current preview; just update meta bar
-          renderPreviewBar()
+          var frame = getMineruFrame()
+          var expected = '/mineru/preview/' + encodeURIComponent(ui.currentId)
+          if (frame !== null && frame.getAttribute('src') !== expected) {
+            // A freshly built panel starts with an empty iframe; make sure the
+            // current/last document is actually loaded, not just listed.
+            openDoc(ui.currentId)
+          } else {
+            renderPreviewBar()
+          }
         }
       }).catch(function (err) {
         toast(t({ zh: '无法加载列表：' + err.message, en: 'Failed to load list: ' + err.message }))
@@ -722,10 +822,15 @@ window.__ModuleLoader__.load({
     }
 
     function openDoc(id) {
+      if (ui.currentId !== null && ui.currentId !== id) {
+        // Save the previous document's scroll position before leaving it.
+        saveCurrentScroll()
+      }
       ui.currentId = id
+      saveLastDocId(id)
       renderList()
       renderPreviewBar()
-      var frame = document.querySelector('.dsh-mineru-frame')
+      var frame = getMineruFrame()
       if (frame === null) return
       frame.src = '/mineru/preview/' + encodeURIComponent(id)
     }
@@ -747,6 +852,7 @@ window.__ModuleLoader__.load({
       doc.addEventListener('keyup', onSelection)
       doc.addEventListener('selectionchange', onSelection)
       doc.addEventListener('scroll', hideQuote, true)
+      doc.addEventListener('scroll', scheduleSaveCurrentScroll, true)
     }
 
     function onSelection() {
@@ -1254,6 +1360,7 @@ window.__ModuleLoader__.load({
       frame.setAttribute('sandbox', 'allow-same-origin allow-scripts')
       frame.addEventListener('load', function () {
         attachSelection()
+        restoreScrollPosition(ui.currentId)
       })
       preview.appendChild(frame)
       body.appendChild(preview)
@@ -1365,6 +1472,7 @@ window.__ModuleLoader__.load({
         hideQuote()
         if (ui.quoteBtn === quoteBtn) ui.quoteBtn = null
         if (quoteBtn.parentNode !== null) quoteBtn.parentNode.removeChild(quoteBtn)
+        saveCurrentScroll()
         var frame = container.querySelector('.dsh-mineru-frame')
         if (frame !== null) frame.src = 'about:blank'
         container.textContent = ''
@@ -1437,6 +1545,7 @@ window.__ModuleLoader__.load({
     function closeModal() {
       if (!ui.open) return
       ui.open = false
+      saveCurrentScroll()
       var host = document.querySelector('[data-dsh-mineru]')
       if (host === null) return
       hideQuote()
