@@ -546,35 +546,73 @@ window.__ModuleLoader__.load({
       return el.scrollTop || 0
     }
 
-    function saveScrollPos(id, top) {
-      if (!id || typeof top !== 'number' || !isFinite(top)) return
-      try { localStorage.setItem('dsh-mineru-scroll:' + id, String(Math.max(0, Math.round(top)))) } catch (_) { /* ignore */ }
-    }
-
-    function loadScrollPos(id) {
-      if (!id) return null
+    function currentSessionKey() {
       try {
-        var raw = localStorage.getItem('dsh-mineru-scroll:' + id)
-        if (raw === null || raw === '') return null
-        var n = parseFloat(raw)
-        return isNaN(n) ? null : n
+        var current = sessions.list.getSnapshot().current
+        if (current === undefined || current === null) return null
+        var key = String(current)
+        if (key === '') return null
+        return key
       } catch (_) { return null }
     }
 
-    function saveLastDocId(id) {
+    function saveScrollPos(sessionKey, id, top) {
+      if (!sessionKey || !id || typeof top !== 'number' || !isFinite(top)) return
+      try { localStorage.setItem('dsh-mineru-scroll:' + sessionKey + ':' + id, String(Math.max(0, Math.round(top)))) } catch (_) { /* ignore */ }
+    }
+
+    function loadScrollPos(sessionKey, id) {
+      if (!id) return null
       try {
-        if (id) localStorage.setItem('dsh-mineru-current-doc', id)
-        else localStorage.removeItem('dsh-mineru-current-doc')
+        var key = sessionKey ? 'dsh-mineru-scroll:' + sessionKey + ':' + id : 'dsh-mineru-scroll:' + id
+        var raw = localStorage.getItem(key)
+        if (raw !== null && raw !== '') {
+          var n = parseFloat(raw)
+          if (!isNaN(n)) return n
+        }
+        // Migrate the old single-session key only when no per-session value exists yet.
+        if (sessionKey) {
+          var legacy = localStorage.getItem('dsh-mineru-scroll:' + id)
+          if (legacy !== null && legacy !== '') {
+            var m = parseFloat(legacy)
+            if (!isNaN(m)) return m
+          }
+        }
+        return null
+      } catch (_) { return null }
+    }
+
+    function saveLastDocId(sessionKey, id) {
+      try {
+        if (!sessionKey) return
+        var key = 'dsh-mineru-current-doc:' + sessionKey
+        if (id) localStorage.setItem(key, id)
+        else localStorage.removeItem(key)
       } catch (_) { /* ignore */ }
     }
 
-    function loadLastDocId() {
-      try { return localStorage.getItem('dsh-mineru-current-doc') || null } catch (_) { return null }
+    function loadLastDocId(sessionKey) {
+      try {
+        if (sessionKey) {
+          var key = 'dsh-mineru-current-doc:' + sessionKey
+          var raw = localStorage.getItem(key)
+          if (raw !== null && raw !== '') return raw
+          // One-time legacy fallback for users who already had the old key.
+          var legacy = localStorage.getItem('dsh-mineru-current-doc')
+          if (legacy !== null && legacy !== '') return legacy
+        } else {
+          var legacyAny = localStorage.getItem('dsh-mineru-current-doc')
+          if (legacyAny !== null && legacyAny !== '') return legacyAny
+        }
+        return null
+      } catch (_) { return null }
     }
 
     function saveCurrentScroll() {
       if (!ui.currentId) return
-      saveScrollPos(ui.currentId, getScrollTop())
+      var sk = currentSessionKey()
+      if (!sk) return
+      saveScrollPos(sk, ui.currentId, getScrollTop())
     }
 
     function scheduleSaveCurrentScroll() {
@@ -590,7 +628,7 @@ window.__ModuleLoader__.load({
       var frame = getMineruFrame()
       var doc = getFrameDoc(frame)
       if (doc === null) return
-      var top = loadScrollPos(id)
+      var top = loadScrollPos(currentSessionKey(), id)
       if (top === null) return
       var apply = function () {
         if (ui.currentId !== id) return
@@ -609,7 +647,7 @@ window.__ModuleLoader__.load({
     function refreshList() {
       return apiList().then(function (entries) {
         renderList()
-        var lastId = loadLastDocId()
+        var lastId = loadLastDocId(currentSessionKey())
         if (ui.currentId === null) {
           if (lastId !== null && entries.some(function (e) { return e.id === lastId })) {
             openDoc(lastId)
@@ -827,7 +865,7 @@ window.__ModuleLoader__.load({
         saveCurrentScroll()
       }
       ui.currentId = id
-      saveLastDocId(id)
+      saveLastDocId(currentSessionKey(), id)
       renderList()
       renderPreviewBar()
       var frame = getMineruFrame()
@@ -1769,6 +1807,27 @@ window.__ModuleLoader__.load({
 
       var quoteSubmitCleanup = attachQuoteSubmit()
 
+      // React to DSH session switches so each conversation keeps its own
+      // last-opened MinerU document / scroll position even while the sidebar
+      // tab stays mounted.
+      var sessionListUnsub = null
+      var lastSessionKey = currentSessionKey()
+      if (sessions !== null && sessions !== undefined && sessions.list !== null && sessions.list !== undefined && typeof sessions.list.subscribe === 'function') {
+        try {
+          sessionListUnsub = sessions.list.subscribe(function () {
+            var sk = currentSessionKey()
+            if (sk === lastSessionKey) return
+            lastSessionKey = sk
+            ui.currentId = null
+            if (document.querySelector('.dsh-mineru-frame') !== null) {
+              refreshList()
+            }
+          })
+        } catch (_) {
+          sessionListUnsub = null
+        }
+      }
+
       function refreshFrameThemes() {
         var frames = document.querySelectorAll('.dsh-mineru-frame')
         for (var i = 0; i < frames.length; i++) {
@@ -1850,6 +1909,7 @@ window.__ModuleLoader__.load({
         sidebarDisposed = true
         if (sidebarTimer !== null) clearInterval(sidebarTimer)
         if (typeof localeUnsub === 'function') localeUnsub()
+        if (typeof sessionListUnsub === 'function') sessionListUnsub()
         if (typeof quoteSubmitCleanup === 'function') quoteSubmitCleanup()
         if (themeObserver !== null) {
           try { themeObserver.disconnect() } catch (_) { /* ignore */ }
