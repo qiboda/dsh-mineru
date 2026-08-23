@@ -7,6 +7,7 @@
  * Host half responsibilities:
  *  - register mineru_parse_pdf / mineru_list_parses tools
  *  - register /mineru/api/*, /mineru/preview/*, /mineru/download/* web routes
+ *  - detect Chinese date-digit loss in MinerU output and auto-retry with OCR
  */
 export const name = 'dsh-mineru'
 export function apply() {}
