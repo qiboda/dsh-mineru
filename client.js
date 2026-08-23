@@ -658,11 +658,34 @@ window.__ModuleLoader__.load({
       }
     }
 
+    function isSideCollapsed() {
+      try { return localStorage.getItem('dsh-mineru-side-collapsed') === '1' } catch (_) { return false }
+    }
+
+    function applySideCollapsed(collapsed) {
+      var side = document.querySelector('.dsh-mineru-side')
+      var resizer = document.querySelector('.dsh-mineru-resizer')
+      if (side !== null) side.style.display = collapsed ? 'none' : ''
+      if (resizer !== null) resizer.style.display = collapsed ? 'none' : ''
+      try { localStorage.setItem('dsh-mineru-side-collapsed', collapsed ? '1' : '0') } catch (_) { /* ignore */ }
+    }
+
+    function toggleSidebarCollapsed() {
+      applySideCollapsed(!isSideCollapsed())
+      renderPreviewBar()
+    }
+
     function renderPreviewBar() {
       var bar = document.querySelector('.dsh-mineru-preview-bar')
       if (bar === null) return
       var entry = ui.entries.find(function (e) { return e.id === ui.currentId }) || null
       bar.textContent = ''
+      var collapseBtn = el('button', 'dsh-mineru-btn dsh-mineru-collapse-btn', isSideCollapsed() ? '⟩' : '⟨')
+      collapseBtn.title = isSideCollapsed()
+        ? t({ zh: '显示文档列表', en: 'Show document list' })
+        : t({ zh: '隐藏文档列表', en: 'Hide document list' })
+      collapseBtn.addEventListener('click', toggleSidebarCollapsed)
+      bar.appendChild(collapseBtn)
       var left = el('div', 'dsh-mineru-status')
       left.textContent = entry
         ? (entry.title + ' · ' + (entry.zip ? 'zip ' + formatSize(entry.sizes && entry.sizes.zip) : '') + ' · ' + (entry.html ? 'html ' + formatSize(entry.sizes && entry.sizes.html) : ''))
@@ -1156,6 +1179,10 @@ window.__ModuleLoader__.load({
       try {
         var savedWidth = parseInt(localStorage.getItem('dsh-mineru-side-width') || '280', 10)
         if (!isNaN(savedWidth) && savedWidth >= 140) side.style.width = savedWidth + 'px'
+        if (localStorage.getItem('dsh-mineru-side-collapsed') === '1') {
+          side.style.display = 'none'
+          resizer.style.display = 'none'
+        }
       } catch (_) { /* localStorage may be unavailable in strict contexts */ }
 
       // Drag-to-resize the HTML preview pane (the list pane width changes too).
