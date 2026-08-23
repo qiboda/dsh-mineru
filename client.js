@@ -717,6 +717,7 @@ window.__ModuleLoader__.load({
         doc = null
       }
       if (doc === null) return
+      applyThemeToFrame(frame, doc)
       if (doc.__dshMineruSelectionAttached) return
       doc.__dshMineruSelectionAttached = true
       doc.addEventListener('mouseup', onSelection)
@@ -769,6 +770,46 @@ window.__ModuleLoader__.load({
       ui.selectedText = ''
       ui.selectedDoc = null
       ui.selectedRange = null
+    }
+
+    function readCssVar(name) {
+      try { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() } catch (_) { return '' }
+    }
+
+    function applyThemeToFrame(frame, doc) {
+      if (frame === null || doc === null) return
+      try {
+        var bg = readCssVar('--dsw-alias-bg-layer-1') || '#0c0f16'
+        var bg2 = readCssVar('--dsw-alias-bg-layer-2') || '#141822'
+        var bg3 = readCssVar('--dsw-alias-bg-layer-3') || '#1a1f2b'
+        var label = readCssVar('--dsw-alias-label-primary') || '#d8dee9'
+        var label2 = readCssVar('--dsw-alias-label-secondary') || '#c0caf5'
+        var label3 = readCssVar('--dsw-alias-label-tertiary') || '#8b93a7'
+        var border = readCssVar('--dsw-alias-border-l2') || '#2a3040'
+        var accent = readCssVar('--dsw-alias-text-accent') || readCssVar('--dsw-alias-accent') || '#7aa2f7'
+        var font = readCssVar('--dsw-font-family') || 'system-ui'
+        var style = doc.getElementById('dsh-mineru-theme-style')
+        if (style === null) {
+          style = doc.createElement('style')
+          style.id = 'dsh-mineru-theme-style'
+          ;(doc.head || doc.documentElement).appendChild(style)
+        }
+        style.textContent = [
+          ':root { color-scheme: dark; --dsh-bg:' + bg + '; --dsh-bg2:' + bg2 + '; --dsh-bg3:' + bg3 + ';',
+          '  --dsh-label:' + label + '; --dsh-label2:' + label2 + '; --dsh-label3:' + label3 + ';',
+          '  --dsh-border:' + border + '; --dsh-accent:' + accent + '; --dsh-font:' + font + '; }',
+          'html, body { font-family: var(--dsh-font); background: var(--dsh-bg); color: var(--dsh-label); }',
+          'body { margin: 0; padding: 1.25rem 1.5rem; line-height: 1.7; }',
+          'h1, h2, h3, h4, h5, h6 { color: var(--dsh-label); border-color: var(--dsh-border); }',
+          'a { color: var(--dsh-accent); }',
+          'blockquote { color: var(--dsh-label2); border-left-color: var(--dsh-accent); background: var(--dsh-bg2); }',
+          'code, pre { background: var(--dsh-bg3); color: var(--dsh-label2); border-color: var(--dsh-border); }',
+          'table { border-color: var(--dsh-border); }',
+          'th, td { border-color: var(--dsh-border); }',
+          'img { max-width: 100%; height: auto; }',
+          'hr { border-color: var(--dsh-border); }',
+        ].join('\n')
+      } catch (_) { /* iframe may be cross-origin or mid-navigation */ }
     }
 
     function selectionLocation(doc, range) {
@@ -1364,6 +1405,7 @@ window.__ModuleLoader__.load({
     var sidebarRegistered = false
     var sidebarTimer = null
     var sidebarDisposed = false
+    var themeObserver = null
 
     function maybeRegisterSidebar() {
       if (sidebarRegistered || sidebarDisposed) return
@@ -1440,6 +1482,25 @@ window.__ModuleLoader__.load({
 
       var quoteSubmitCleanup = attachQuoteSubmit()
 
+      function refreshFrameThemes() {
+        var frames = document.querySelectorAll('.dsh-mineru-frame')
+        for (var i = 0; i < frames.length; i++) {
+          var frame = frames[i]
+          var doc = null
+          try { doc = frame.contentDocument } catch (_) { /* ignore */ }
+          applyThemeToFrame(frame, doc)
+        }
+      }
+      var themeObserver = new MutationObserver(refreshFrameThemes)
+      try {
+        themeObserver.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['class', 'data-theme', 'data-color-scheme', 'style'],
+        })
+      } catch (_) {
+        // Older browser or non-DOM target; the per-load apply still covers most cases.
+      }
+
       // Native DSH Settings page section. `settings.section` is declared by the
       // DSH settings domain; the same pattern is used by dsh-better-sidebar.
       if (ctx.slots !== undefined && ctx.slots !== null) {
@@ -1497,6 +1558,10 @@ window.__ModuleLoader__.load({
         if (sidebarTimer !== null) clearInterval(sidebarTimer)
         if (typeof localeUnsub === 'function') localeUnsub()
         if (typeof quoteSubmitCleanup === 'function') quoteSubmitCleanup()
+        if (themeObserver !== null) {
+          try { themeObserver.disconnect() } catch (_) { /* ignore */ }
+          themeObserver = null
+        }
         var host = document.querySelector('[data-dsh-mineru]')
         if (host !== null) host.textContent = ''
       }
