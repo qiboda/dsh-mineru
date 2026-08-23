@@ -1139,7 +1139,6 @@ window.__ModuleLoader__.load({
         dragging = false
         activePointerId = null
         resizer.classList.remove('dragging')
-        frame.style.pointerEvents = ''
         resizer.removeEventListener('pointermove', onResizeMove)
         resizer.removeEventListener('pointerup', onResizeEnd)
         resizer.removeEventListener('pointercancel', onResizeEnd)
@@ -1155,7 +1154,6 @@ window.__ModuleLoader__.load({
         startX = e.clientX
         startSideWidth = side.getBoundingClientRect().width
         resizer.classList.add('dragging')
-        frame.style.pointerEvents = 'none'
         try { resizer.setPointerCapture(e.pointerId) } catch (_) { /* older browsers */ }
         resizer.addEventListener('pointermove', onResizeMove)
         resizer.addEventListener('pointerup', onResizeEnd)
