@@ -843,22 +843,89 @@ window.__ModuleLoader__.load({
       } catch (_) { /* iframe may be cross-origin or mid-navigation */ }
     }
 
+    function isHeadingElement(el) {
+      return el !== null && el.nodeType === 1 && /^h[1-6]$/i.test(el.tagName || '')
+    }
+
+    function headingLevel(el) {
+      return Number(el.tagName.charAt(1))
+    }
+
+    function headingText(el, max) {
+      return (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, max || 80)
+    }
+
+    // Return a human-readable section path for the selection. Unlike the old
+    // ancestor-only walk, this also finds the nearest preceding headings, so
+    // text selected inside a table/paragraph still gets the surrounding
+    // chapter/section location (e.g. “第二节 > 四、主要会计数据和财务指标”).
     function selectionLocation(doc, range) {
       if (doc === null || range === null) return ''
-      var node = range.commonAncestorContainer
-      var el = node.nodeType === 3 ? node.parentElement : node.nodeType === 1 ? node : null
-      if (el === null) return ''
-      var headings = []
-      var cur = el
-      while (cur !== null && cur !== doc.body && cur !== doc.documentElement) {
-        var tag = cur.tagName ? cur.tagName.toLowerCase() : ''
-        if (/^h[1-6]$/.test(tag)) {
-          var h = (cur.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80)
-          if (h !== '') headings.unshift(h)
+      var start = range.startContainer
+      var stack = []
+      var walker = doc.createTreeWalker(doc, NodeFilter.SHOW_ELEMENT, {
+        acceptNode: function (n) {
+          return isHeadingElement(n) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
+        },
+      })
+      var n
+      while ((n = walker.nextNode())) {
+        var containsStart = n === start || n.contains(start)
+        var beforeStart = false
+        if (!containsStart) {
+          var rel = n.compareDocumentPosition(start)
+          beforeStart = (rel & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+          if (!beforeStart) break
         }
-        cur = cur.parentElement
+        var level = headingLevel(n)
+        while (stack.length > 0 && headingLevel(stack[stack.length - 1]) >= level) stack.pop()
+        stack.push(n)
       }
-      return headings.join(' > ').slice(0, 220)
+      var path = []
+      while (stack.length > 0) {
+        var h = stack.pop()
+        var text = headingText(h, 80)
+        if (text !== '') path.unshift(text)
+      }
+      return path.join(' > ').slice(0, 260)
+    }
+
+    // Nearest heading that contains or immediately precedes the selection.
+    // Returns the HTML id when available (pandoc headings usually have ids),
+    // otherwise a slug generated from the heading text.
+    function selectionAnchor(doc, range) {
+      if (doc === null || range === null) return ''
+      var start = range.startContainer
+      var best = null
+      var stack = []
+      var walker = doc.createTreeWalker(doc, NodeFilter.SHOW_ELEMENT, {
+        acceptNode: function (n) {
+          return isHeadingElement(n) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
+        },
+      })
+      var n
+      while ((n = walker.nextNode())) {
+        var containsStart = n === start || n.contains(start)
+        var beforeStart = false
+        if (!containsStart) {
+          var rel = n.compareDocumentPosition(start)
+          beforeStart = (rel & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+          if (!beforeStart) break
+        }
+        best = n
+        if (!containsStart) {
+          var level = headingLevel(n)
+          while (stack.length > 0 && headingLevel(stack[stack.length - 1]) >= level) stack.pop()
+          stack.push(n)
+        }
+      }
+      if (best === null) return ''
+      var id = best.getAttribute('id') || ''
+      if (id !== '') return id
+      var text = headingText(best, 80)
+      var slug = text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '')
+      if (slug !== '') return slug
+      return 'sec-' + Math.abs(headingText(best, 80).length || 0)
     }
 
     function collectSelectionImages(doc, range) {
@@ -905,6 +972,13 @@ window.__ModuleLoader__.load({
         if (q.location !== undefined && q.location !== '') {
           lines.push(t({ zh: '位置：' + q.location, en: 'Location: ' + q.location }))
         }
+        if (q.anchor !== undefined && q.anchor !== '') {
+          var htmlLoc = '/mineru/preview/' + encodeURIComponent(entry.id || '') + '#' + encodeURIComponent(q.anchor)
+          lines.push(t({
+            zh: 'HTML 位置：' + htmlLoc + '（锚点 #' + q.anchor + '）',
+            en: 'HTML location: ' + htmlLoc + ' (anchor #' + q.anchor + ')',
+          }))
+        }
         if (q.images !== undefined && q.images.length > 0) {
           var parts = q.images.map(function (im) {
             if (im.alt) return 'alt=' + im.alt
@@ -947,6 +1021,7 @@ window.__ModuleLoader__.load({
           },
           text: text,
           location: selectionLocation(ui.selectedDoc, ui.selectedRange),
+          anchor: selectionAnchor(ui.selectedDoc, ui.selectedRange),
           images: collectSelectionImages(ui.selectedDoc, ui.selectedRange),
         }
         ui.quotes.push(quote)
@@ -1321,7 +1396,7 @@ window.__ModuleLoader__.load({
           return React.createElement('li', { key: q.id, className: 'dsh-mineru-quote-dock-item' },
             React.createElement('div', { className: 'dsh-mineru-quote-dock-item-title' }, (q.entry && q.entry.title) || q.entry.id || 'MinerU'),
             (q.location !== null && q.location !== undefined && q.location !== '')
-              ? React.createElement('div', { className: 'dsh-mineru-quote-dock-item-loc' }, '📍 ' + q.location)
+              ? React.createElement('div', { className: 'dsh-mineru-quote-dock-item-loc' }, '📍 ' + q.location + (q.anchor ? ' · #' + q.anchor : ''))
               : null,
             React.createElement('div', { className: 'dsh-mineru-quote-dock-item-snippet' },
               q.text.length > 90 ? q.text.slice(0, 90) + '…' : q.text
