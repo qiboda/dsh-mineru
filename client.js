@@ -597,10 +597,17 @@ window.__ModuleLoader__.load({
             localStorage.setItem('dsh-mineru-current-doc', perDoc)
           }
           // Promote every per-session scroll value for this session.
+          // Snapshot keys first: writing new global keys while iterating a live
+          // localStorage can shift indices and skip entries.
           var prefix = 'dsh-mineru-scroll:' + sk + ':'
-          for (var i = 0; i < localStorage.length; i++) {
-            var k = localStorage.key(i)
-            if (k === null || k.indexOf(prefix) !== 0) continue
+          var keys = []
+          for (var j = 0; j < localStorage.length; j++) {
+            var k = localStorage.key(j)
+            if (k !== null) keys.push(k)
+          }
+          for (var i = 0; i < keys.length; i++) {
+            var k = keys[i]
+            if (k.indexOf(prefix) !== 0) continue
             var id = k.slice(prefix.length)
             if (id === '') continue
             var raw = localStorage.getItem(k)
@@ -646,6 +653,7 @@ window.__ModuleLoader__.load({
 
     function saveCurrentScroll() {
       if (!ui.currentId) return
+      if (getMineruFrame() === null) return
       saveScrollPos(ui.currentId, getScrollTop())
     }
 
@@ -679,6 +687,7 @@ window.__ModuleLoader__.load({
     }
 
     function refreshList() {
+      runReadingPositionMigration()
       return apiList().then(function (entries) {
         renderList()
         var lastId = loadLastDocId()
