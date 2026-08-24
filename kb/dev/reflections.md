@@ -19,3 +19,21 @@
 3. 使用 reflect-audit 时传不带 `session-` 前缀的 UUID，或修正脚本兼容全 ID。
 
 **Process improvements**: None（本次无机制固化；后续如需可把“先查 systemctl --user”写成排查 checklist）
+
+## 2026-08-24 — ref #2 MinerU HTML 阅读位置跨 DSH session 共享
+
+**What was done**: Changed MinerU client reading-position persistence from per-DSH-session localStorage keys to global keys (`dsh-mineru-current-doc`, `dsh-mineru-scroll:<id>`). Added an explicit marker-guarded one-time migration (`dsh-mineru-migrate-reading-pos-v1`) from the active session's old per-session keys, normalized migrated scroll values, flushed the current scroll before DSH session switches, and updated README.
+
+**User corrections** (if any): 无。用户需求本身即本次变更目标（“改为所有session共享同一个位置信息”），未出现语义纠正。
+
+**What went wrong**:
+- 第一轮用 5 个后台 `subagent_*` 并行审查，等待期间它们持续 `[running]`，未在合理时间内返回；中断后用 `workflow` 重新并行跑同一组审查才拿到完整结果。多代理审查应直接使用会阻塞返回的 `workflow` 工具，避免后台通知等待。
+- 两个完整 5 视角审查轮次后仍发现可固化问题（迁移 marker、localStorage 迭代、README 同步），说明初版迁移逻辑不够显式，本可以在一轮 review 内覆盖。
+- 工作流输出较长被截断，需要读取 spill 文件才能拿到完整报告。
+
+**Lessons learned**:
+1. 需要并行多子代理且必须拿到结果时，优先用 `workflow`（同步等待全部完成），而不是后台 `subagent_*` 后等待通知。
+2. 涉及存储格式/迁移语义时，第一版就应包含显式一次性 marker、先快照 localStorage keys 再写入、以及 README 同步；这三项在多视角审查里必然被提出。
+3. 大规模工具输出直接落 spill 后再按需读取，避免在上下文中堆积原始 JSON。
+
+**Process improvements**: None（本次未固化新的机制；后续可考虑把“同步 client.js → lib/client.js”做成脚本，减少手工复制两份 bundle 的摩擦）。
